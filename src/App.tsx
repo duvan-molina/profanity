@@ -31,6 +31,7 @@ function App() {
   const [profanityResult, setProfanityResult] = useState<ProfanityResponse | null>(null);
   const [isWordsExpanded, setIsWordsExpanded] = useState(false);
   const [selectedActions, setSelectedActions] = useState<{[key: number]: string}>({});
+  const [customReplacements, setCustomReplacements] = useState<{[key: number]: string}>({});
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -40,8 +41,63 @@ function App() {
     }));
   };
 
+  const applyWordAction = (wordIndex: number, action: string, customText?: string) => {
+    if (!profanityResult) return;
+
+    const sensitivityItem = profanityResult.sensitivity[wordIndex];
+    const originalText = sensitivityItem.textOriginal;
+    
+    let replacementText = '';
+    if (action === 'keep-original') {
+      replacementText = originalText;
+    } else if (action === 'replace' && customText) {
+      replacementText = customText;
+    } else {
+      return; // No action or invalid action
+    }
+
+    // Update all form fields by replacing the original word with the replacement
+    setFormData(prev => {
+      const updatedData = { ...prev };
+      
+      // Check and replace in all fields
+      Object.keys(updatedData).forEach(key => {
+        const fieldValue = updatedData[key as keyof FormData];
+        if (typeof fieldValue === 'string' && fieldValue.includes(originalText)) {
+          updatedData[key as keyof FormData] = fieldValue.replace(new RegExp(originalText, 'g'), replacementText);
+        }
+      });
+      
+      return updatedData;
+    });
+    
+    console.log(`Replacing "${originalText}" with "${replacementText}" in all form fields`);
+  };
+
+  const handleActionChange = (index: number, action: string) => {
+    setSelectedActions(prev => ({...prev, [index]: action}));
+  };
+
+  const handleCustomReplacementChange = (index: number, customText: string) => {
+    setCustomReplacements(prev => ({...prev, [index]: customText}));
+  };
+
+  const executeAction = (index: number) => {
+    const action = selectedActions[index];
+    if (!action) return;
+
+    if (action === 'keep-original') {
+      applyWordAction(index, action);
+    } else if (action === 'replace') {
+      const customText = customReplacements[index];
+      if (customText && customText.trim()) {
+        applyWordAction(index, 'replace', customText);
+      }
+    }
+  };
+
   const validateProfanity = async (data: FormData): Promise<ProfanityResponse> => {
-    const response = await fetch('https://salvation-unwrap-aquarium-scary.trycloudflare.com/profanity/analyze', {
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/profanity/analyze`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -165,14 +221,31 @@ function App() {
                       <div className="action-dropdown">
                         <select 
                           value={selectedActions[index] || ''}
-                          onChange={(e) => setSelectedActions(prev => ({...prev, [index]: e.target.value}))}
+                          onChange={(e) => handleActionChange(index, e.target.value)}
                           className="action-select"
                         >
                           <option value="">Seleccionar acción</option>
-                          <option value="keep-censored">Mantener censurado</option>
                           <option value="keep-original">Mantener original</option>
                           <option value="replace">Reemplazar con...</option>
                         </select>
+                        {selectedActions[index] === 'replace' && (
+                          <input
+                            type="text"
+                            placeholder="Escribir reemplazo..."
+                            value={customReplacements[index] || ''}
+                            onChange={(e) => handleCustomReplacementChange(index, e.target.value)}
+                            className="replacement-input"
+                          />
+                        )}
+                        {selectedActions[index] && (
+                          <button
+                            onClick={() => executeAction(index)}
+                            className="execute-action-btn"
+                            disabled={selectedActions[index] === 'replace' && !customReplacements[index]?.trim()}
+                          >
+                            Ejecutar acción
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
